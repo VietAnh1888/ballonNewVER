@@ -1,19 +1,18 @@
--- Inject bằng KRNL, Synapse X trong Pet Simulator 99
+-- Inject bằng Synapse X hoặc KRNL vào Pet Simulator 99
 
--- GUI khởi tạo
 local CoreGui = game:GetService("CoreGui")
+local lighting = game:GetService("Lighting")
 local gui = Instance.new("ScreenGui", CoreGui)
 gui.Name = "FPS_BOOST_GUI"
 
 local frame = Instance.new("Frame", gui)
-frame.Size = UDim2.new(0, 250, 0, 300)
+frame.Size = UDim2.new(0, 250, 0, 330)
 frame.Position = UDim2.new(0, 10, 0, 100)
 frame.BackgroundColor3 = Color3.new(0.1, 0.1, 0.1)
 frame.Active = true
 frame.Draggable = true
 Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 8)
 
--- Tạo nút đơn giản
 function createButton(text, posY, callback)
     local btn = Instance.new("TextButton", frame)
     btn.Size = UDim2.new(1, -20, 0, 30)
@@ -27,9 +26,29 @@ function createButton(text, posY, callback)
     Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
 end
 
--- Các nút tính năng
-createButton("🧹 Anti Lag", 0, function()
-    local lighting = game:GetService("Lighting")
+-- 💥 XÓA TOÀN BỘ VẬT THỂ HIỂN THỊ TRONG GAME
+local function deleteVisuals()
+    local trashTypes = {
+        "MeshPart", "Part", "UnionOperation", "WedgePart", "TrussPart",
+        "Decal", "Texture", "SurfaceAppearance", "Model", "Accessory"
+    }
+
+    for _, obj in pairs(workspace:GetDescendants()) do
+        if table.find(trashTypes, obj.ClassName) then
+            pcall(function() obj:Destroy() end)
+        end
+    end
+
+    -- Xóa pet và coin trong workspace nếu có
+    pcall(function()
+        if workspace:FindFirstChild("__THINGS") then
+            workspace.__THINGS:Destroy()
+        end
+    end)
+end
+
+-- Các hàm auto kích hoạt
+local function auto_anti_lag()
     lighting.GlobalShadows = false
     lighting.FogEnd = 1e10
     lighting.Brightness = 0
@@ -42,60 +61,56 @@ createButton("🧹 Anti Lag", 0, function()
             v.Reflectance = 0
         end
     end
-end)
+end
 
-createButton("🔇 Tắt Âm Thanh", 40, function()
+local function auto_mute()
     for _, s in pairs(game:GetDescendants()) do
         if s:IsA("Sound") then s.Volume = 0 end
     end
-end)
+end
 
-createButton("🔢 Tắt Damage/Coins", 80, function()
+local function auto_hide_text()
     for _, v in pairs(workspace:GetDescendants()) do
         if v:IsA("BillboardGui") or v:IsA("TextLabel") then v:Destroy() end
     end
     workspace.DescendantAdded:Connect(function(obj)
         if obj:IsA("BillboardGui") or obj:IsA("TextLabel") then obj:Destroy() end
     end)
-end)
+end
 
-createButton("🚀 FPS Cap = 30", 120, function()
-    if setfpscap then setfpscap(30)
-    else warn("Executor không hỗ trợ setfpscap()") end
-end)
-
-createButton("❌ Tắt UI phụ", 160, function()
-    for _, ui in pairs(game.CoreGui:GetChildren()) do
+local function auto_hide_ui()
+    for _, ui in pairs(CoreGui:GetChildren()) do
         if ui:IsA("ScreenGui") and ui.Name ~= "RobloxGui" and ui.Name ~= "FPS_BOOST_GUI" then
             ui.Enabled = false
         end
     end
-end)
+end
 
--- BLACK SCREEN và NÚT ẨN ẢNH
-createButton("🖤 Black Screen", 200, function()
+local function auto_cap_fps()
+    if setfpscap then
+        setfpscap(30)
+    end
+end
+
+-- Giao diện các nút
+createButton("🧹 Anti Lag", 0, auto_anti_lag)
+createButton("🔇 Tắt Âm Thanh", 40, auto_mute)
+createButton("🔢 Tắt Damage/Coins", 80, auto_hide_text)
+createButton("🚀 FPS Cap = 30", 120, auto_cap_fps)
+createButton("❌ Tắt UI phụ", 160, auto_hide_ui)
+createButton("💣 XÓA HÌNH ẢNH VẬT THỂ", 200, deleteVisuals)
+
+-- Nút Black Screen
+createButton("🖤 Black Screen", 240, function()
     local black = Instance.new("Frame", CoreGui)
     black.Name = "BLACKOUT"
     black.Size = UDim2.new(1, 0, 1, 0)
     black.BackgroundColor3 = Color3.new(0, 0, 0)
     black.ZIndex = 9998
 
-    -- Nút ảnh để tắt black screen
     local button = Instance.new("ImageButton", black)
     button.Size = UDim2.new(0, 300, 0, 170)
     button.Position = UDim2.new(0.5, -150, 0.5, -85)
     button.BackgroundTransparency = 1
     button.ZIndex = 9999
-    button.Image = "rbxasset://textures/ui/GuiImagePlaceholder.png"
-
-    -- Thay ảnh người dùng (tạm từ file local)
-    -- Bạn phải dùng công cụ hỗ trợ như Synapse X (có custom asset ID) hoặc tải lên imgur rồi dùng link web-to-image converter nếu muốn ảnh thực
-
-    button.MouseButton1Click:Connect(function()
-        black:Destroy()
-    end)
-end)
-
-createButton("❎ Đóng GUI", 240, function()
-    gui:Destroy()
-end)
+    button.Image = "rbxasset://textures/ui/GuiImagePlaceholder.png" -- Bạn thay bằng ảnh b
