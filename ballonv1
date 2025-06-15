@@ -1,116 +1,103 @@
--- Inject bằng Synapse X hoặc KRNL vào Pet Simulator 99
+-- Pet Simulator 99 - Tower Defense Ultimate Script [For Clone Account]
+-- Executor: Synapse X Recommended
 
-local CoreGui = game:GetService("CoreGui")
-local lighting = game:GetService("Lighting")
-local gui = Instance.new("ScreenGui", CoreGui)
-gui.Name = "FPS_BOOST_GUI"
+--===[ SETTINGS ]===--
+setfpscap(30)
 
-local frame = Instance.new("Frame", gui)
-frame.Size = UDim2.new(0, 250, 0, 330)
-frame.Position = UDim2.new(0, 10, 0, 100)
-frame.BackgroundColor3 = Color3.new(0.1, 0.1, 0.1)
-frame.Active = true
-frame.Draggable = true
-Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 8)
+--===[ REQUIRE GAME LIBRARY ]===--
+local Library = require(game:GetService("ReplicatedStorage"):WaitForChild("Library"))
+local Network = Library.Network
 
-function createButton(text, posY, callback)
-    local btn = Instance.new("TextButton", frame)
-    btn.Size = UDim2.new(1, -20, 0, 30)
-    btn.Position = UDim2.new(0, 10, 0, posY)
-    btn.Text = text
-    btn.TextColor3 = Color3.new(1,1,1)
-    btn.BackgroundColor3 = Color3.new(0.2, 0.2, 0.2)
-    btn.Font = Enum.Font.SourceSansBold
-    btn.TextSize = 18
-    btn.MouseButton1Click:Connect(callback)
-    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
-end
+--===[ AUTO TOWER DEFENSE ]===--
+spawn(function()
+    while true do
+        pcall(function()
+            -- Auto Start Wave if button found
+            local btn = workspace:FindFirstChild("StartWaveButton") or workspace:FindFirstChild("NextWaveButton")
+            if btn and btn:IsA("Part") then
+                firetouchinterest(game.Players.LocalPlayer.Character.HumanoidRootPart, btn, 0)
+                wait(0.2)
+                firetouchinterest(game.Players.LocalPlayer.Character.HumanoidRootPart, btn, 1)
+            end
 
--- 💥 XÓA TOÀN BỘ VẬT THỂ HIỂN THỊ TRONG GAME
-local function deleteVisuals()
-    local trashTypes = {
-        "MeshPart", "Part", "UnionOperation", "WedgePart", "TrussPart",
-        "Decal", "Texture", "SurfaceAppearance", "Model", "Accessory"
-    }
+            -- Auto Place Tower at fixed location
+            local towers = {"Basic", "Sniper", "Area"} -- chọn tên tower nếu có
+            for _, name in ipairs(towers) do
+                Network:Fire("Tower Place", name, Vector3.new(0, 0, 0)) -- chỉnh tọa độ nếu cần
+            end
 
-    for _, obj in pairs(workspace:GetDescendants()) do
-        if table.find(trashTypes, obj.ClassName) then
-            pcall(function() obj:Destroy() end)
-        end
+            -- Auto Upgrade All Towers
+            for _, tower in pairs(workspace.__THINGS.Towers:GetChildren()) do
+                Network:Fire("Tower Upgrade", tower.Name)
+            end
+        end)
+        wait(3)
     end
+end)
 
-    -- Xóa pet và coin trong workspace nếu có
-    pcall(function()
-        if workspace:FindFirstChild("__THINGS") then
-            workspace.__THINGS:Destroy()
-        end
-    end)
-end
-
--- Các hàm auto kích hoạt
-local function auto_anti_lag()
+--===[ FPS BOOST EXTREME ]===--
+spawn(function()
+    local lighting = game:GetService("Lighting")
     lighting.GlobalShadows = false
-    lighting.FogEnd = 1e10
+    lighting.FogEnd = 1e9
     lighting.Brightness = 0
-    lighting.ClockTime = 12
+    lighting.ClockTime = 14
+
     for _, v in pairs(workspace:GetDescendants()) do
-        if v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Smoke") or v:IsA("Fire") or v:IsA("Decal") or v:IsA("Texture") then
-            v:Destroy()
-        elseif v:IsA("MeshPart") or v:IsA("Part") then
+        if v:IsA("Decal") or v:IsA("Texture") or v:IsA("Shirt") or v:IsA("Pants") then
+            pcall(function() v:Destroy() end)
+        elseif v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Smoke") or v:IsA("Fire") then
+            pcall(function() v:Destroy() end)
+        elseif v:IsA("MeshPart") or v:IsA("Part") or v:IsA("UnionOperation") then
             v.Material = Enum.Material.SmoothPlastic
             v.Reflectance = 0
         end
     end
-end
 
-local function auto_mute()
     for _, s in pairs(game:GetDescendants()) do
-        if s:IsA("Sound") then s.Volume = 0 end
+        if s:IsA("Sound") then
+            s.Volume = 0
+        end
     end
-end
 
-local function auto_hide_text()
-    for _, v in pairs(workspace:GetDescendants()) do
-        if v:IsA("BillboardGui") or v:IsA("TextLabel") then v:Destroy() end
-    end
-    workspace.DescendantAdded:Connect(function(obj)
-        if obj:IsA("BillboardGui") or obj:IsA("TextLabel") then obj:Destroy() end
-    end)
-end
-
-local function auto_hide_ui()
-    for _, ui in pairs(CoreGui:GetChildren()) do
-        if ui:IsA("ScreenGui") and ui.Name ~= "RobloxGui" and ui.Name ~= "FPS_BOOST_GUI" then
+    for _, ui in pairs(game.CoreGui:GetChildren()) do
+        if ui:IsA("ScreenGui") and ui.Name ~= "RobloxGui" then
             ui.Enabled = false
         end
     end
-end
+end)
 
-local function auto_cap_fps()
-    if setfpscap then
-        setfpscap(30)
+--===[ FULL BLACKSCREEN WITH STATUS ]===--
+spawn(function()
+    local gui = Instance.new("ScreenGui", game.CoreGui)
+    gui.Name = "BlackScreenWithStatus"
+    gui.IgnoreGuiInset = true
+    gui.ResetOnSpawn = false
+    gui.ZIndexBehavior = Enum.ZIndexBehavior.Global
+
+    local bg = Instance.new("Frame", gui)
+    bg.Size = UDim2.new(1,0,1,0)
+    bg.BackgroundColor3 = Color3.new(0,0,0)
+    bg.ZIndex = 999
+
+    local info = Instance.new("TextLabel", gui)
+    info.Size = UDim2.new(1, 0, 0, 60)
+    info.Position = UDim2.new(0, 0, 0, 0)
+    info.BackgroundTransparency = 1
+    info.TextColor3 = Color3.new(1, 1, 1)
+    info.TextSize = 20
+    info.Font = Enum.Font.SourceSansBold
+    info.Text = "💰 Coin: ?  | 💎 Gem: ?  | 🌊 Wave: ?  | 🕒 Time: " .. os.date("%H:%M:%S")
+    info.ZIndex = 1000
+
+    while true do
+        pcall(function()
+            local stats = game.Players.LocalPlayer:FindFirstChild("leaderstats")
+            local coin = stats and stats:FindFirstChild("Coins") and stats.Coins.Value or "?"
+            local gem = stats and stats:FindFirstChild("Diamonds") and stats.Diamonds.Value or "?"
+            local wave = workspace:FindFirstChild("WaveDisplay") and workspace.WaveDisplay.Text or "?"
+            info.Text = "💰 Coin: " .. coin .. "  | 💎 Gem: " .. gem .. "  | 🌊 Wave: " .. tostring(wave) .. "  | 🕒 Time: " .. os.date("%H:%M:%S")
+        end)
+        wait(1)
     end
-end
-
--- Giao diện các nút
-createButton("🧹 Anti Lag", 0, auto_anti_lag)
-createButton("🔇 Tắt Âm Thanh", 40, auto_mute)
-createButton("🔢 Tắt Damage/Coins", 80, auto_hide_text)
-createButton("🚀 FPS Cap = 30", 120, auto_cap_fps)
-createButton("❌ Tắt UI phụ", 160, auto_hide_ui)
-createButton("💣 XÓA HÌNH ẢNH VẬT THỂ", 200, deleteVisuals)
-
--- Nút Black Screen
-createButton("🖤 Black Screen", 240, function()
-    local black = Instance.new("Frame", CoreGui)
-    black.Name = "BLACKOUT"
-    black.Size = UDim2.new(1, 0, 1, 0)
-    black.BackgroundColor3 = Color3.new(0, 0, 0)
-    black.ZIndex = 9998
-
-    local button = Instance.new("ImageButton", black)
-    button.Size = UDim2.new(0, 300, 0, 170)
-    button.Position = UDim2.new(0.5, -150, 0.5, -85)
-    button.BackgroundTransparency = 1
-    button.ZIndex = 9999
-    button.Image = "rbxasset://textures/ui/GuiImagePlaceholder.png" -- Bạn thay bằng ảnh b
+end)
