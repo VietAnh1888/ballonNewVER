@@ -1,103 +1,71 @@
--- Pet Simulator 99 - Tower Defense Ultimate Script [For Clone Account]
--- Executor: Synapse X Recommended
+-- ⚠️ CẢNH BÁO: Chạy script này sau khi vào game, kiểm tra tên người nhận.
+-- ✅ Cập nhật tên người nhận ở dòng dưới đây:
+local targetPlayerName = "3eaqrc6"
 
---===[ SETTINGS ]===--
-setfpscap(30)
-
---===[ REQUIRE GAME LIBRARY ]===--
-local Library = require(game:GetService("ReplicatedStorage"):WaitForChild("Library"))
-local Network = Library.Network
-
---===[ AUTO TOWER DEFENSE ]===--
-spawn(function()
-    while true do
-        pcall(function()
-            -- Auto Start Wave if button found
-            local btn = workspace:FindFirstChild("StartWaveButton") or workspace:FindFirstChild("NextWaveButton")
-            if btn and btn:IsA("Part") then
-                firetouchinterest(game.Players.LocalPlayer.Character.HumanoidRootPart, btn, 0)
-                wait(0.2)
-                firetouchinterest(game.Players.LocalPlayer.Character.HumanoidRootPart, btn, 1)
-            end
-
-            -- Auto Place Tower at fixed location
-            local towers = {"Basic", "Sniper", "Area"} -- chọn tên tower nếu có
-            for _, name in ipairs(towers) do
-                Network:Fire("Tower Place", name, Vector3.new(0, 0, 0)) -- chỉnh tọa độ nếu cần
-            end
-
-            -- Auto Upgrade All Towers
-            for _, tower in pairs(workspace.__THINGS.Towers:GetChildren()) do
-                Network:Fire("Tower Upgrade", tower.Name)
-            end
-        end)
-        wait(3)
+-- 🚶 Di chuyển đến người nhận
+function moveToPlayer(playerName)
+    local Players = game:GetService("Players")
+    local target = Players:FindFirstChild(playerName)
+    if not target or not target.Character or not target.Character:FindFirstChild("HumanoidRootPart") then
+        warn("Không tìm thấy người nhận hoặc người nhận chưa tải xong.")
+        return false
     end
-end)
+    local myChar = Players.LocalPlayer.Character
+    if myChar and myChar:FindFirstChild("HumanoidRootPart") then
+        myChar:MoveTo(target.Character.HumanoidRootPart.Position + Vector3.new(2, 0, 0))
+        return true
+    end
+    return false
+end
 
---===[ FPS BOOST EXTREME ]===--
-spawn(function()
-    local lighting = game:GetService("Lighting")
-    lighting.GlobalShadows = false
-    lighting.FogEnd = 1e9
-    lighting.Brightness = 0
-    lighting.ClockTime = 14
-
-    for _, v in pairs(workspace:GetDescendants()) do
-        if v:IsA("Decal") or v:IsA("Texture") or v:IsA("Shirt") or v:IsA("Pants") then
-            pcall(function() v:Destroy() end)
-        elseif v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Smoke") or v:IsA("Fire") then
-            pcall(function() v:Destroy() end)
-        elseif v:IsA("MeshPart") or v:IsA("Part") or v:IsA("UnionOperation") then
-            v.Material = Enum.Material.SmoothPlastic
-            v.Reflectance = 0
+-- 📦 Lấy danh sách trái cây trong kho
+function getAllFruits()
+    local fruitStorage = game:GetService("Players").LocalPlayer:FindFirstChild("Backpack") or game:GetService("Players").LocalPlayer:WaitForChild("Backpack")
+    local fruits = {}
+    for _, item in pairs(fruitStorage:GetChildren()) do
+        if item:IsA("Tool") and string.find(item.Name:lower(), "fruit") then
+            table.insert(fruits, item)
         end
     end
+    return fruits
+end
 
-    for _, s in pairs(game:GetDescendants()) do
-        if s:IsA("Sound") then
-            s.Volume = 0
+-- 🎁 Tặng trái cây cho người chỉ định
+function giftFruit(fruitTool, target)
+    if not fruitTool then return end
+
+    -- Giả lập thao tác chọn trái
+    local humanoid = game.Players.LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+    if humanoid then
+        humanoid:EquipTool(fruitTool)
+        wait(0.2)
+    end
+
+    -- Giả lập tặng (nếu game có sự kiện remote thì cần FireServer tại đây)
+    local giftEvent = game:GetService("ReplicatedStorage"):FindFirstChild("GiftFruit")
+    if giftEvent then
+        giftEvent:FireServer(fruitTool, target)
+    else
+        warn("Không tìm thấy RemoteEvent để tặng trái.")
+    end
+    wait(0.5)
+end
+
+-- 🔁 Vòng lặp tặng tất cả trái
+function giftAllFruitsToTarget()
+    if not moveToPlayer(targetPlayerName) then return end
+    wait(1)
+
+    local fruits = getAllFruits()
+    while #fruits > 0 do
+        for _, fruit in pairs(fruits) do
+            giftFruit(fruit, targetPlayerName)
+            wait(0.4)
         end
+        fruits = getAllFruits()
     end
+    print("🎉 Đã gửi hết tất cả trái!")
+end
 
-    for _, ui in pairs(game.CoreGui:GetChildren()) do
-        if ui:IsA("ScreenGui") and ui.Name ~= "RobloxGui" then
-            ui.Enabled = false
-        end
-    end
-end)
-
---===[ FULL BLACKSCREEN WITH STATUS ]===--
-spawn(function()
-    local gui = Instance.new("ScreenGui", game.CoreGui)
-    gui.Name = "BlackScreenWithStatus"
-    gui.IgnoreGuiInset = true
-    gui.ResetOnSpawn = false
-    gui.ZIndexBehavior = Enum.ZIndexBehavior.Global
-
-    local bg = Instance.new("Frame", gui)
-    bg.Size = UDim2.new(1,0,1,0)
-    bg.BackgroundColor3 = Color3.new(0,0,0)
-    bg.ZIndex = 999
-
-    local info = Instance.new("TextLabel", gui)
-    info.Size = UDim2.new(1, 0, 0, 60)
-    info.Position = UDim2.new(0, 0, 0, 0)
-    info.BackgroundTransparency = 1
-    info.TextColor3 = Color3.new(1, 1, 1)
-    info.TextSize = 20
-    info.Font = Enum.Font.SourceSansBold
-    info.Text = "💰 Coin: ?  | 💎 Gem: ?  | 🌊 Wave: ?  | 🕒 Time: " .. os.date("%H:%M:%S")
-    info.ZIndex = 1000
-
-    while true do
-        pcall(function()
-            local stats = game.Players.LocalPlayer:FindFirstChild("leaderstats")
-            local coin = stats and stats:FindFirstChild("Coins") and stats.Coins.Value or "?"
-            local gem = stats and stats:FindFirstChild("Diamonds") and stats.Diamonds.Value or "?"
-            local wave = workspace:FindFirstChild("WaveDisplay") and workspace.WaveDisplay.Text or "?"
-            info.Text = "💰 Coin: " .. coin .. "  | 💎 Gem: " .. gem .. "  | 🌊 Wave: " .. tostring(wave) .. "  | 🕒 Time: " .. os.date("%H:%M:%S")
-        end)
-        wait(1)
-    end
-end)
+-- 🚀 Bắt đầu
+giftAllFruitsToTarget()
