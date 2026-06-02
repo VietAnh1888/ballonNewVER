@@ -48,9 +48,9 @@ local CONFIG = {
     AUTO_USE_DICE      = true,
     MAX_PER_TYPE       = 15,
     FARM_RADIUS        = 120,
-    DISABLE_3D_RENDER  = false, 
+    DISABLE_3D_RENDER  = true, 
     OPTIMIZE_TEXTURES  = true, 
-    FPS_CAP            = 60, 
+    FPS_CAP            = 10, 
     ANTI_AFK           = true, 
 
     CRAFT_PRIORITIES = {
@@ -1438,79 +1438,95 @@ local function startNavcUI()
     end)
 end
 
--- 1. Khởi chạy giao diện HUD ngay lập tức để người dùng có phản hồi trực quan trên màn hình
-task.spawn(startNavcUI)
-
--- 2. Tiến hành tải các tài nguyên game quan trọng trong nền
+-- 1. Khởi động quy trình kiểm tra vị trí và di chuyển vào RNG Instance trước
 task.spawn(function()
-    print("[RNG Script] Đang tải các tài nguyên game quan trọng (Waiting for Library)...")
+    local inside = false
+    pcall(function() inside = isInRngInstance() end)
     
-    Library = ReplicatedStorage:WaitForChild("Library", 45)
-    if not Library then 
-        warn("[RNG Script] Không thể tải thư viện game chính (Library Timeout)!")
-        return 
+    if not inside then
+        print("[RNG Script] Chưa ở trong RNG Instance. Tiến hành di chuyển vào cổng...")
+        pcall(enterRngInstance)
+        print("[RNG Script] Đã di chuyển vào cổng. Chờ 15 giây để môi trường và bản đồ tải ổn định...")
+        task.wait(15)
+    else
+        print("[RNG Script] Đã ở sẵn trong RNG Instance. Chờ 5 giây để ổn định tài nguyên...")
+        task.wait(5)
     end
 
-    Client    = Library:WaitForChild("Client", 30)
-    Directory = Library:WaitForChild("Directory", 30)
-    Types     = Library:WaitForChild("Types", 30)
-    Modules   = Library:WaitForChild("Modules", 30)
+    -- 2. Sau khi ổn định vị trí, khởi chạy giao diện HUD cho người dùng
+    task.spawn(startNavcUI)
 
-    Network        = Client and safeRequire(Client:WaitForChild("Network", 30))
-    RngEggsTypes   = Types     and safeRequire(Types:WaitForChild("RngEggs", 30))
-    RngEggsDir     = Directory and safeRequire(Directory:WaitForChild("RngEggs", 30))
-    RngBalancing   = Library   and safeRequire(Library:WaitForChild("Balancing", 30) and Library.Balancing:WaitForChild("Rng", 30))
-    RngEggCmds     = Client    and safeRequire(Client:WaitForChild("RngEggCmds", 30))
-    PetItem        = Library   and safeRequire(Library:WaitForChild("Items", 30):WaitForChild("PetItem", 30))
-    LuckyDiceCmds  = Client    and safeRequire(Client:WaitForChild("LuckyDiceCmds", 30))
-
-    print("[RNG Script] --- THÔNG TIN TẢI MODULE ---")
-    print("[RNG Script] Network:", tostring(Network))
-    print("[RNG Script] RngEggCmds:", tostring(RngEggCmds))
-    print("[RNG Script] PetItem:", tostring(PetItem))
-    print("[RNG Script] LuckyDiceCmds:", tostring(LuckyDiceCmds))
-    print("[RNG Script] RngEggsDir:", tostring(RngEggsDir))
-    print("[RNG Script] SaveModule:", tostring(getSaveModule()))
-    print("[RNG Script] -----------------------------")
-
-    if not Network then
-        warn("[RNG Script] Ngừng khởi chạy các luồng do lỗi thiếu Network!")
-        return
-    end
-
-    print("[RNG Script] Khởi tạo thành công! Bắt đầu chạy các luồng tự động farm.")
-
-    -- 3. Khởi chạy so le (Staggered Startup) các luồng tự động sau khi tải xong tài nguyên
-    task.wait(1.5)
-    task.spawn(rollLoop)
-    
-    task.wait(1.5)
-    task.spawn(farmLoop)
-
-    task.wait(1.5)
-    task.spawn(navigationLoop)
-    
-    task.wait(1.5)
+    -- 3. Tiến hành tải các tài nguyên game quan trọng trong nền
     task.spawn(function()
-        while true do
-            autoEquip()
-            task.wait(10)
+        print("[RNG Script] Đang tải các tài nguyên game quan trọng (Waiting for Library)...")
+        
+        Library = ReplicatedStorage:WaitForChild("Library", 45)
+        if not Library then 
+            warn("[RNG Script] Không thể tải thư viện game chính (Library Timeout)!")
+            return 
         end
-    end)
 
-    task.wait(2.0)
-    task.spawn(function()
-        local t = { merchant=0, craft=0, upgrade=0, sell=0, useMega=0, useLucky2=0 }
-        while true do
-            local now = tick()
-            if now - t.merchant >= CONFIG.LOOP_INTERVALS.MERCHANT then t.merchant=now; task.spawn(autoMerchant) end
-            if now - t.upgrade  >= CONFIG.LOOP_INTERVALS.UPGRADE  then t.upgrade=now;  task.spawn(autoUpgrade)  end
-            if now - t.craft    >= CONFIG.LOOP_INTERVALS.CRAFT    then t.craft=now;    task.spawn(autoCraft)    end
-            if now - t.sell     >= CONFIG.LOOP_INTERVALS.SELL     then t.sell=now;     task.spawn(autoSell)     end
-            if now - t.useMega  >= CONFIG.LOOP_INTERVALS.USE_MEGA_DICE then t.useMega=now;  task.spawn(autoUseMegaDice)  end
-            if now - t.useLucky2 >= CONFIG.LOOP_INTERVALS.USE_LUCKY_DICE_II then t.useLucky2=now; task.spawn(autoUseLuckyDiceII)  end
-            task.wait(1)
+        Client    = Library:WaitForChild("Client", 30)
+        Directory = Library:WaitForChild("Directory", 30)
+        Types     = Library:WaitForChild("Types", 30)
+        Modules   = Library:WaitForChild("Modules", 30)
+
+        Network        = Client and safeRequire(Client:WaitForChild("Network", 30))
+        RngEggsTypes   = Types     and safeRequire(Types:WaitForChild("RngEggs", 30))
+        RngEggsDir     = Directory and safeRequire(Directory:WaitForChild("RngEggs", 30))
+        RngBalancing   = Library   and safeRequire(Library:WaitForChild("Balancing", 30) and Library.Balancing:WaitForChild("Rng", 30))
+        RngEggCmds     = Client    and safeRequire(Client:WaitForChild("RngEggCmds", 30))
+        PetItem        = Library   and safeRequire(Library:WaitForChild("Items", 30):WaitForChild("PetItem", 30))
+        LuckyDiceCmds  = Client    and safeRequire(Client:WaitForChild("LuckyDiceCmds", 30))
+
+        print("[RNG Script] --- THÔNG TIN TẢI MODULE ---")
+        print("[RNG Script] Network:", tostring(Network))
+        print("[RNG Script] RngEggCmds:", tostring(RngEggCmds))
+        print("[RNG Script] PetItem:", tostring(PetItem))
+        print("[RNG Script] LuckyDiceCmds:", tostring(LuckyDiceCmds))
+        print("[RNG Script] RngEggsDir:", tostring(RngEggsDir))
+        print("[RNG Script] SaveModule:", tostring(getSaveModule()))
+        print("[RNG Script] -----------------------------")
+
+        if not Network then
+            warn("[RNG Script] Ngừng khởi chạy các luồng do lỗi thiếu Network!")
+            return
         end
+
+        print("[RNG Script] Khởi tạo thành công! Bắt đầu chạy các luồng tự động farm.")
+
+        -- 4. Khởi chạy so le (Staggered Startup) các luồng tự động sau khi tải xong tài nguyên
+        task.wait(1.5)
+        task.spawn(rollLoop)
+        
+        task.wait(1.5)
+        task.spawn(farmLoop)
+
+        task.wait(1.5)
+        task.spawn(navigationLoop)
+        
+        task.wait(1.5)
+        task.spawn(function()
+            while true do
+                autoEquip()
+                task.wait(10)
+            end
+        end)
+
+        task.wait(2.0)
+        task.spawn(function()
+            local t = { merchant=0, craft=0, upgrade=0, sell=0, useMega=0, useLucky2=0 }
+            while true do
+                local now = tick()
+                if now - t.merchant >= CONFIG.LOOP_INTERVALS.MERCHANT then t.merchant=now; task.spawn(autoMerchant) end
+                if now - t.upgrade  >= CONFIG.LOOP_INTERVALS.UPGRADE  then t.upgrade=now;  task.spawn(autoUpgrade)  end
+                if now - t.craft    >= CONFIG.LOOP_INTERVALS.CRAFT    then t.craft=now;    task.spawn(autoCraft)    end
+                if now - t.sell     >= CONFIG.LOOP_INTERVALS.SELL     then t.sell=now;     task.spawn(autoSell)     end
+                if now - t.useMega  >= CONFIG.LOOP_INTERVALS.USE_MEGA_DICE then t.useMega=now;  task.spawn(autoUseMegaDice)  end
+                if now - t.useLucky2 >= CONFIG.LOOP_INTERVALS.USE_LUCKY_DICE_II then t.useLucky2=now; task.spawn(autoUseLuckyDiceII)  end
+                task.wait(1)
+            end
+        end)
     end)
 end)
 
