@@ -49,7 +49,7 @@ local CONFIG = {
     MAX_PER_TYPE       = 15,
     FARM_RADIUS        = 120,
     DISABLE_3D_RENDER  = false, 
-    OPTIMIZE_TEXTURES  = false, 
+    OPTIMIZE_TEXTURES  = true, 
     FPS_CAP            = 60, 
     ANTI_AFK           = true, 
 
