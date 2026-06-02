@@ -1,71 +1,1526 @@
--- ⚠️ CẢNH BÁO: Chạy script này sau khi vào game, kiểm tra tên người nhận.
--- ✅ Cập nhật tên người nhận ở dòng dưới đây:
-local targetPlayerName = "3eaqrc6"
+local Players           = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local LocalPlayer       = Players.LocalPlayer
 
--- 🚶 Di chuyển đến người nhận
-function moveToPlayer(playerName)
-    local Players = game:GetService("Players")
-    local target = Players:FindFirstChild(playerName)
-    if not target or not target.Character or not target.Character:FindFirstChild("HumanoidRootPart") then
-        warn("Không tìm thấy người nhận hoặc người nhận chưa tải xong.")
-        return false
+-- Khai báo upvalue cho các thư viện và module game để đồng bộ hóa hoạt động và hiển thị UI
+local Library, Client, Directory, Types, Modules, Network, RngEggsTypes, RngEggsDir, RngBalancing, RngEggCmds, PetItem, LuckyDiceCmds, _SaveModule
+
+repeat task.wait(0.5) until game:IsLoaded() and LocalPlayer.Character
+
+local ZONE_CONFIG = {
+    {
+        id             = "Zone1",
+        order          = 1,
+        displayName    = "Area 1 (RNG World)",
+        farmCenter     = Vector3.new(4406.35, 2562.10, -5379.42),
+    },
+    {
+        id             = "Zone2",
+        order          = 2,
+        displayName    = "Area 2",
+        farmCenter     = Vector3.new(4669.27, 2562.10, -5379.42),
+    },
+    {
+        id             = "Zone3",
+        order          = 3,
+        displayName    = "Area 3",
+        farmCenter     = Vector3.new(4922.06, 2562.10, -5379.42),
+    },
+    {
+        id             = "Zone4",
+        order          = 4,
+        displayName    = "Area 4",
+        farmCenter     = Vector3.new(5174.87, 2562.10, -5379.42),
+    },
+}
+
+local CONFIG = {
+    AUTO_ROLL          = true,
+    AUTO_HIDE_ROLL     = true,
+    AUTO_CLEAR_HIDDEN  = true,
+    AUTO_SELL_PETS     = true,
+    AUTO_BUY_MERCHANT  = true,
+    AUTO_CRAFT_DICE    = true,
+    AUTO_UPGRADE       = true,
+    AUTO_EQUIP_PETS    = true,
+    AUTO_FARM          = true,
+    AUTO_NAVIGATE_ZONE = true,
+    AUTO_USE_DICE      = true,
+    MAX_PER_TYPE       = 15,
+    FARM_RADIUS        = 120,
+    DISABLE_3D_RENDER  = false, 
+    OPTIMIZE_TEXTURES  = false, 
+    FPS_CAP            = 60, 
+    ANTI_AFK           = true, 
+
+    CRAFT_PRIORITIES = {
+        "Lucky Dice II V2",
+        "Lucky Dice III V2",
+        "Mega Lucky Dice V2",
+        "Mega Lucky Dice II V2",
+    },
+
+    UPGRADES_TO_BUY = {
+        "RNGHugeLuck",
+        "RNGEggLuck",
+        "RNGExtraEgg",
+        "RNGHatchSpeed",
+        "RNGBonusLuck",
+    },
+
+    COOLDOWN_DEFAULT = 0.05,
+    LOOP_INTERVALS = {
+        MERCHANT = 5, -- Giãn chu kỳ lặp cho giả lập (từ 1s lên 5s)
+        CRAFT    = 5, -- Giãn từ 1s lên 5s
+        UPGRADE  = 30, -- Giãn từ 10s lên 30s
+        SELL     = 300,
+        FARM     = 0.4, -- Giãn từ 0.25s lên 0.4s để giảm tính toán va chạm 3D và CPU vật lý
+        ZONE_CHECK = 3, -- Giãn từ 1s lên 3s
+        USE_MEGA_DICE = 3, -- Giãn từ 1s lên 3s
+        USE_LUCKY_DICE_II = 300,
+        },
+}
+
+local function safeRequire(path)
+    if not path then return nil end
+    local ok, res = pcall(require, path)
+    return ok and res or nil
+end
+
+local function handleBlackScreen()
+    local CoreGui = game:GetService("CoreGui")
+    local ScreenGui = CoreGui:FindFirstChild("RngBlackScreenGui") or LocalPlayer.PlayerGui:FindFirstChild("RngBlackScreenGui")
+
+    if CONFIG.DISABLE_3D_RENDER then
+        if not ScreenGui then
+            ScreenGui = Instance.new("ScreenGui")
+            ScreenGui.Name = "RngBlackScreenGui"
+            ScreenGui.DisplayOrder = 9999998 
+            ScreenGui.IgnoreGuiInset = true 
+            ScreenGui.ResetOnSpawn = false
+
+            local Frame = Instance.new("Frame")
+            Frame.Name = "BlackFrame"
+            Frame.Size = UDim2.new(1, 0, 1, 0)
+            Frame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+            Frame.BorderSizePixel = 0
+            Frame.Parent = ScreenGui
+
+            local success, _ = pcall(function() ScreenGui.Parent = CoreGui end)
+            if not success then
+                ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+            end
+        end
+    else
+        if ScreenGui then
+            ScreenGui:Destroy()
+        end
     end
-    local myChar = Players.LocalPlayer.Character
-    if myChar and myChar:FindFirstChild("HumanoidRootPart") then
-        myChar:MoveTo(target.Character.HumanoidRootPart.Position + Vector3.new(2, 0, 0))
-        return true
+end
+
+local function optimizeTextures()
+    if not CONFIG.OPTIMIZE_TEXTURES then return end
+
+    local ClassTypes = { 
+        "Decal", "Texture", "ParticleEmitter", "Trail", "Smoke", "Fire", "Sparkles", 
+        "Sky", "Atmosphere", "Clouds", "SunRaysEffect", "BloomEffect", "BlurEffect", 
+        "DepthOfFieldEffect", "ColorCorrectionEffect", "PostEffect", "Beam", "Highlight",
+        "SpecialMesh", "Mesh", "BlockMesh", "CharacterMesh",
+        "Animator", "Animation", "AnimationController", "Pose", "Keyframe", "KeyframeSequence",
+        "BillboardGui", "SurfaceGui"
+    }
+
+    local function cleanObject(v)
+        pcall(function()
+            if table.find(ClassTypes, v.ClassName) then
+                v:Destroy()
+            elseif v:IsA("BasePart") or v:IsA("MeshPart") or v:IsA("Part") then
+                v.Material = Enum.Material.SmoothPlastic
+                v.Reflectance = 0
+                v.CastShadow = false
+                v.Transparency = 1 -- Tắt hiển thị toàn bộ các part trong game (cho trong suốt 100%)
+            end
+        end)
+    end
+
+    -- 1. Xóa các đối tượng hiện có trong Workspace
+    pcall(function()
+        for _, v in ipairs(workspace:GetDescendants()) do
+            cleanObject(v)
+        end
+    end)
+
+    -- 2. Tắt hiệu ứng Lighting & bóng đổ toàn cục
+    pcall(function()
+        local Lighting = game:GetService("Lighting")
+        Lighting.GlobalShadows = false
+        Lighting.FogStart = 9e9
+        Lighting.FogEnd = 9e9
+        Lighting.Brightness = 0
+        Lighting.ClockTime = 12
+        for _, v in ipairs(Lighting:GetDescendants()) do
+            if table.find(ClassTypes, v.ClassName) or v:IsA("PostEffect") then
+                pcall(function() v:Destroy() end)
+            end
+        end
+    end)
+
+    -- 3. Xử lý các đối tượng mới xuất hiện
+    pcall(function()
+        workspace.DescendantAdded:Connect(function(v)
+            if not CONFIG.OPTIMIZE_TEXTURES then return end
+            task.wait()
+            if not v or not v.Parent then return end
+            cleanObject(v)
+        end)
+    end)
+
+    -- 4. Ẩn Pets (tắt hiển thị pet client-side để tránh tốn RAM/CPU vẽ hình)
+    pcall(function()
+        local things = workspace:FindFirstChild("__THINGS")
+        local petsFolder = things and things:FindFirstChild("Pets")
+        if petsFolder then
+            for _, pet in ipairs(petsFolder:GetChildren()) do
+                pcall(function() pet:Destroy() end)
+            end
+            petsFolder.ChildAdded:Connect(function(pet)
+                task.wait()
+                pcall(function() pet:Destroy() end)
+            end)
+        end
+    end)
+
+    -- 5. Ẩn NPCs (tắt hiển thị NPC client-side)
+    pcall(function()
+        local things = workspace:FindFirstChild("__THINGS")
+        local npcsFolder = things and things:FindFirstChild("NPCs")
+        if npcsFolder then
+            for _, npc in ipairs(npcsFolder:GetChildren()) do
+                pcall(function() npc:Destroy() end)
+            end
+            npcsFolder.ChildAdded:Connect(function(npc)
+                task.wait()
+                pcall(function() npc:Destroy() end)
+            end)
+        end
+
+        -- Quét bổ sung các mô hình NPC, Merchant, Machine để ẩn
+        for _, v in ipairs(workspace:GetDescendants()) do
+            if v:IsA("Model") and (v.Name:lower():find("npc") or v.Name:lower():find("merchant") or v.Name:lower():find("machine")) then
+                for _, part in ipairs(v:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        pcall(function() part.Transparency = 1 end)
+                    end
+                end
+            end
+        end
+    end)
+
+    -- 6. Ẩn người chơi khác (Tối ưu cực mạnh cho giả lập)
+    pcall(function()
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer then
+                if player.Character then
+                    pcall(function() player.Character:Destroy() end)
+                end
+                player.CharacterAdded:Connect(function(char)
+                    task.wait()
+                    pcall(function() char:Destroy() end)
+                end)
+            end
+        end
+        Players.PlayerAdded:Connect(function(player)
+            player.CharacterAdded:Connect(function(char)
+                task.wait()
+                pcall(function() char:Destroy() end)
+            end)
+        end)
+    end)
+
+    -- 7. Giảm chất lượng hiển thị của Engine xuống mức thấp nhất
+    pcall(function()
+        settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
+    end)
+
+    -- 8. Tắt CoreGui của Roblox (Chat, Leaderboard, Backpack...)
+    pcall(function()
+        local StarterGui = game:GetService("StarterGui")
+        StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.All, false)
+    end)
+
+    -- 9. Ẩn tất cả ScreenGui phụ của game để giải phóng bộ nhớ đồ họa
+    pcall(function()
+        local function hideUnwantedGui(gui)
+            if gui:IsA("ScreenGui") and gui.Name ~= "Main" and gui.Name ~= "ComboFallbackUI" and gui.Name ~= "RngComboMonitorGui" and gui.Name ~= "NavcHudGui" and gui.Name ~= "RngBlackScreenGui" then
+                gui.Enabled = false
+            end
+        end
+        for _, gui in ipairs(LocalPlayer.PlayerGui:GetChildren()) do
+            hideUnwantedGui(gui)
+        end
+        LocalPlayer.PlayerGui.ChildAdded:Connect(function(gui)
+            task.wait()
+            hideUnwantedGui(gui)
+        end)
+    end)
+end
+
+local function toggle3DRendering()
+    local success, err = pcall(function()
+        local RunService = game:GetService("RunService")
+        if CONFIG.DISABLE_3D_RENDER then
+            RunService:Set3dRenderingEnabled(false)
+
+        else
+            RunService:Set3dRenderingEnabled(true)
+
+        end
+    end)
+    if not success then
+
+    end
+    pcall(handleBlackScreen)
+end
+
+local function applyFpsCap()
+    if CONFIG.FPS_CAP then
+        local success, err = pcall(function()
+            if setfpscap then
+                setfpscap(CONFIG.FPS_CAP)
+
+            else
+
+            end
+        end)
+        if not success then
+
+        end
+    end
+end
+
+local function applyAntiAfk()
+    if CONFIG.ANTI_AFK then
+        -- Lớp 1: Lắng nghe sự kiện Idled (Dự phòng)
+        pcall(function()
+            LocalPlayer.Idled:Connect(function()
+                local VirtualUser = game:GetService("VirtualUser")
+                VirtualUser:CaptureController()
+                VirtualUser:ClickButton2(Vector2.new())
+            end)
+        end)
+
+        -- Lớp 2: Vòng lặp chủ động mô phỏng nhấn chuột mỗi 2 phút (Đảm bảo ổn định tuyệt đối)
+        task.spawn(function()
+            local VirtualUser = game:GetService("VirtualUser")
+            while CONFIG.ANTI_AFK do
+                task.wait(120)
+                pcall(function()
+                    local camera = workspace.CurrentCamera
+                    if camera then
+                        VirtualUser:Button2Down(Vector2.new(0, 0), camera.CFrame)
+                        task.wait(0.2)
+                        VirtualUser:Button2Up(Vector2.new(0, 0), camera.CFrame)
+                    else
+                        VirtualUser:CaptureController()
+                        VirtualUser:ClickButton2(Vector2.new())
+                    end
+                end)
+            end
+        end)
+    end
+end
+
+optimizeTextures()
+toggle3DRendering()
+applyFpsCap()
+applyAntiAfk()
+
+-- Thư viện và module sẽ được nạp ở cuối file trước khi chạy các luồng chính
+
+local _SaveModule = nil
+local function getSaveModule()
+    if not _SaveModule then
+        local Library = game.ReplicatedStorage:FindFirstChild("Library")
+        local Client = Library and Library:FindFirstChild("Client")
+        _SaveModule = Client and safeRequire(Client:FindFirstChild("Save"))
+    end
+    return _SaveModule
+end
+
+local _RngZonesModule = nil
+local function getRngZonesModule()
+    if not _RngZonesModule then
+        local Library = game.ReplicatedStorage:FindFirstChild("Library")
+        local Modules = Library and Library:FindFirstChild("Modules")
+        _RngZonesModule = Modules and safeRequire(Modules:FindFirstChild("RngZones"))
+    end
+    return _RngZonesModule
+end
+
+local function getChar()
+    local char = LocalPlayer.Character
+    if not char then return nil, nil, nil end
+    return char, char:FindFirstChild("HumanoidRootPart"), char:FindFirstChildOfClass("Humanoid")
+end
+
+local function safeTeleport(targetCFrame)
+    pcall(function()
+        local _, hrp = getChar()
+        if hrp then
+            -- Triệt tiêu hoàn toàn vận tốc để tránh bị quán tính giật quay lại hoặc văng
+            pcall(function() hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0) end)
+            pcall(function() hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0) end)
+            
+            -- Dịch chuyển trực tiếp (Một lần duy nhất, tức thời)
+            hrp.CFrame = targetCFrame
+        end
+    end)
+end
+
+local function waitWithTimeout(checkFunc, timeout)
+    local elapsed = 0
+    while elapsed < timeout do
+        if checkFunc() then return true end
+        task.wait(0.5)
+        elapsed = elapsed + 0.5
+    end
+    return checkFunc()
+end
+
+local function isInRngInstance()
+    local _, hrp = getChar()
+    if not hrp then return false end
+    local p = hrp.Position
+    return p.X >= 3850 and p.X <= 5500
+       and p.Y >= 2540 and p.Y <= 2730
+       and p.Z >= -5700 and p.Z <= -4900
+end
+
+local function enterRngInstance()
+    if isInRngInstance() then return true end
+
+    -- Cố gắng 1: Dịch chuyển gần sát cổng và điều khiển nhân vật đi bộ vào cổng (chắc chắn kích hoạt Touched của Roblox)
+    pcall(function()
+        local _, hrp, hum = getChar()
+        if hrp and hum then
+            hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+            hrp.CFrame = CFrame.new(179.7021484375, 19.00869369506836, -140.54132080078125)
+            task.wait(0.2)
+            hum:MoveTo(hrp.Position + Vector3.new(0, 0, -5)) -- Đi thẳng về phía trước 5 studs để va chạm vào cổng portal
+        end
+    end)
+    if waitWithTimeout(isInRngInstance, 4) then return true end
+
+    -- Cố gắng 2: Dùng lệnh Join client-side của game
+    pcall(function()
+        local IC = Client and safeRequire(Client:FindFirstChild("InstanceCmds"))
+        if IC and IC.Join then IC.Join("RngInstance") end
+    end)
+    if waitWithTimeout(isInRngInstance, 4) then return true end
+
+    -- Cố gắng 3: Gửi remote Invoke trực tiếp lên Server để tham gia
+    pcall(function() Network.Invoke("Instance_Join", "RngInstance") end)
+    return waitWithTimeout(isInRngInstance, 6)
+end
+
+local _lastZoneReport = nil
+local _lastNavTime   = 0
+local mySlotSuffix   = nil
+local mySlotFolder   = nil
+local mySlotZOffset  = nil
+local _lastWarnTime = 0
+
+local function getZoneProgress()
+    local save = nil
+    if Save then
+        pcall(function() save = Save.Get() end)
+    end
+    if not save then return nil, "no_save" end
+
+    local result = {}
+    local prog = save.RNGEventZoneProgress
+
+    if prog then
+        for _, zone in ipairs(ZONE_CONFIG) do
+            local entry = prog[zone.id]
+            result[zone.id] = {
+                unlocked   = entry and entry.Unlocked == true or false,
+                breakCount = entry and (entry.BreakCount or 0) or 0,
+            }
+        end
+        return result, "DirectSave"
+    end
+
+    for _, zone in ipairs(ZONE_CONFIG) do
+        result[zone.id] = { unlocked = zone.order == 1, breakCount = 0 }
+    end
+    return result, "Fallback"
+end
+local function getLaneZ()
+    local things = workspace:FindFirstChild("__THINGS")
+    local instContainer = things and things:FindFirstChild("__INSTANCE_CONTAINER")
+    local active = instContainer and instContainer:FindFirstChild("Active")
+    local rngInst = active and active:FindFirstChild("RngInstance")
+    local breakZones = rngInst and rngInst:FindFirstChild("BREAK_ZONES")
+    if breakZones then
+        for _, child in ipairs(breakZones:GetChildren()) do
+            if child:IsA("BasePart") and child.Name == "BREAK_ZONE" then
+                return child.Position.Z
+            end
+        end
+    end
+
+    local _, hrp = getChar()
+    if hrp and isInRngInstance() then
+        return hrp.Position.Z
+    end
+    return -5379.42
+end
+
+local function isGatePresent(gateX, laneZ)
+    local things = workspace:FindFirstChild("__THINGS")
+    local instContainer = things and things:FindFirstChild("__INSTANCE_CONTAINER")
+    local active = instContainer and instContainer:FindFirstChild("Active")
+    local rngInst = active and active:FindFirstChild("RngInstance")
+    local gatesFolder = rngInst and rngInst:FindFirstChild("Gates")
+    if not gatesFolder then return false end
+
+    for _, child in ipairs(gatesFolder:GetDescendants()) do
+        if child:IsA("BasePart") then
+            local pos = child.Position
+            if math.abs(pos.Z - laneZ) < 20 and math.abs(pos.X - gateX) < 15 then
+
+                local gateHUD = child:FindFirstChild("GateHUD")
+                if (gateHUD and gateHUD.Enabled == true) or (child.Transparency < 0.9 and child.CanCollide) then
+                    return true
+                end
+            end
+        end
     end
     return false
 end
 
--- 📦 Lấy danh sách trái cây trong kho
-function getAllFruits()
-    local fruitStorage = game:GetService("Players").LocalPlayer:FindFirstChild("Backpack") or game:GetService("Players").LocalPlayer:WaitForChild("Backpack")
-    local fruits = {}
-    for _, item in pairs(fruitStorage:GetChildren()) do
-        if item:IsA("Tool") and string.find(item.Name:lower(), "fruit") then
-            table.insert(fruits, item)
+local _lastReportedZoneId = nil
+
+local function getMaxUnlockedZone()
+    local saveModule = getSaveModule()
+    local rngZonesModule = getRngZonesModule()
+
+    local save = nil
+    if saveModule then
+        pcall(function() save = saveModule.Get() end)
+    end
+
+    local maxZone = ZONE_CONFIG[1]
+    local maxOrder = 1
+
+    local apiSuccess = false
+    if save and rngZonesModule and rngZonesModule.GetMaxUnlockedZoneId then
+        local ok, maxZoneId = pcall(function() return rngZonesModule.GetMaxUnlockedZoneId(save) end)
+        if ok and maxZoneId then
+            for _, zone in ipairs(ZONE_CONFIG) do
+                if zone.id == maxZoneId then
+                    maxZone = zone
+                    maxOrder = zone.order
+                    apiSuccess = true
+                    break
+                end
+            end
         end
     end
-    return fruits
-end
 
--- 🎁 Tặng trái cây cho người chỉ định
-function giftFruit(fruitTool, target)
-    if not fruitTool then return end
-
-    -- Giả lập thao tác chọn trái
-    local humanoid = game.Players.LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-    if humanoid then
-        humanoid:EquipTool(fruitTool)
-        wait(0.2)
+    if not apiSuccess and save and save.RNGEventZoneProgress then
+        for k, v in pairs(save.RNGEventZoneProgress) do
+            if v and v.Unlocked then
+                for _, zone in ipairs(ZONE_CONFIG) do
+                    if zone.id == k and zone.order > maxOrder then
+                        maxZone = zone
+                        maxOrder = zone.order
+                    end
+                end
+            end
+        end
     end
 
-    -- Giả lập tặng (nếu game có sự kiện remote thì cần FireServer tại đây)
-    local giftEvent = game:GetService("ReplicatedStorage"):FindFirstChild("GiftFruit")
-    if giftEvent then
-        giftEvent:FireServer(fruitTool, target)
+    local laneZ = getLaneZ()
+    if isGatePresent(4542.86, laneZ) then
+        if maxOrder > 1 then
+            maxZone = ZONE_CONFIG[1]
+            maxOrder = 1
+        end
+    elseif isGatePresent(4795.86, laneZ) then
+        if maxOrder > 2 then
+            maxZone = ZONE_CONFIG[2]
+            maxOrder = 2
+        end
+    elseif isGatePresent(5048.86, laneZ) then
+        if maxOrder > 3 then
+            maxZone = ZONE_CONFIG[3]
+            maxOrder = 3
+        end
+    end
+
+    if maxZone.id ~= _lastReportedZoneId then
+        _lastReportedZoneId = maxZone.id
+
+    end
+
+    return maxZone, maxOrder, {}
+end
+
+local function getDynamicFarmCenter(zone)
+    local things = workspace:FindFirstChild("__THINGS")
+    local _, hrp = getChar()
+
+    local instContainer = things and things:FindFirstChild("__INSTANCE_CONTAINER")
+    local active = instContainer and instContainer:FindFirstChild("Active")
+    local rngInst = active and active:FindFirstChild("RngInstance")
+    local breakZones = rngInst and rngInst:FindFirstChild("BREAK_ZONES")
+
+    if breakZones then
+        local parts = {}
+        for _, child in ipairs(breakZones:GetChildren()) do
+            if child:IsA("BasePart") and child.Name == "BREAK_ZONE" then
+                table.insert(parts, child)
+            end
+        end
+        table.sort(parts, function(a, b) return a.Position.X < b.Position.X end)
+
+        local zoneNode = parts[zone.order]
+        if zoneNode then
+            mySlotZOffset = zoneNode.Position.Z - zone.farmCenter.Z
+            return zoneNode.Position
+        end
+    end
+
+    if mySlotZOffset then
+        return zone.farmCenter + Vector3.new(0, 0, mySlotZOffset)
+    end
+
+    if hrp and isInRngInstance() then
+        local pX = hrp.Position.X
+        for _, z in ipairs(ZONE_CONFIG) do
+            if math.abs(pX - z.farmCenter.X) <= 130 then
+                mySlotZOffset = hrp.Position.Z - z.farmCenter.Z
+                return z.farmCenter + Vector3.new(0, 0, mySlotZOffset)
+            end
+        end
+    end
+
+    local instances = things and things:FindFirstChild("Instances")
+    local legacyRngInst = instances and instances:FindFirstChild("RngInstance")
+    local breakSpawns = legacyRngInst and legacyRngInst:FindFirstChild("BREAKABLE_SPAWNS")
+
+    if breakSpawns then
+        if not mySlotFolder then
+            mySlotFolder = breakSpawns:FindFirstChild(LocalPlayer.Name)
+                or breakSpawns:FindFirstChild(tostring(LocalPlayer.UserId))
+        end
+
+        if mySlotFolder then
+            local bestPart = nil
+            local minDiff = 999999
+            for _, child in ipairs(mySlotFolder:GetDescendants()) do
+                if child:IsA("BasePart") then
+                    local diff = math.abs(child.Position.X - zone.farmCenter.X)
+                    if diff < minDiff then
+                        minDiff = diff
+                        bestPart = child
+                    end
+                end
+            end
+            if bestPart and minDiff < 30 then
+                mySlotZOffset = bestPart.Position.Z - zone.farmCenter.Z
+                return bestPart.Position
+            end
+        end
+
+        if not mySlotSuffix then
+            if hrp then
+                local closestPart = nil
+                local minD = 999999
+                for _, desc in ipairs(breakSpawns:GetDescendants()) do
+                    if desc:IsA("BasePart") then
+                        local d = (desc.Position - hrp.Position).Magnitude
+                        if d < minD then
+                            minD = d
+                            closestPart = desc
+                        end
+                    end
+                end
+                if closestPart and minD < 100 then
+                    local curr = closestPart
+                    local suffix = nil
+                    while curr and curr ~= breakSpawns do
+                        suffix = curr.Name:match("([%s%-_]?%d+)$")
+                        if suffix then break end
+                        curr = curr.Parent
+                    end
+                    if suffix then
+                        mySlotSuffix = suffix
+                    end
+                end
+            end
+        end
+
+        if mySlotSuffix then
+            local bestPart = nil
+            local minDiff = 999999
+            for _, desc in ipairs(breakSpawns:GetDescendants()) do
+                if desc:IsA("BasePart") then
+                    local curr = desc
+                    local hasSuffix = false
+                    while curr and curr ~= breakSpawns do
+                        if curr.Name:sub(-#mySlotSuffix) == mySlotSuffix then
+                            hasSuffix = true
+                            break
+                        end
+                        curr = curr.Parent
+                    end
+                    if hasSuffix then
+                        local diff = math.abs(desc.Position.X - zone.farmCenter.X)
+                        if diff < minDiff then
+                            minDiff = diff
+                            bestPart = desc
+                        end
+                    end
+                end
+            end
+            if bestPart and minDiff < 30 then
+                mySlotZOffset = bestPart.Position.Z - zone.farmCenter.Z
+                return bestPart.Position
+            end
+        end
+    end
+
+    return zone.farmCenter
+end
+
+local function teleportToZoneCenter(zone)
+    local _, hrp = getChar()
+    if not hrp then return end
+
+    local target = getDynamicFarmCenter(zone)
+    if not target then
+        local now = tick()
+        if now - _lastWarnTime >= 10 then
+            _lastWarnTime = now
+
+        end
+        return
+    end
+
+    local dist = (hrp.Position - target).Magnitude
+    if dist < 40 then
+        return
+    end
+    safeTeleport(CFrame.new(target + Vector3.new(0, 4, 0)), 1.5)
+end
+
+local isSellingPets = false
+
+local function navigationLoop()
+    if not CONFIG.AUTO_NAVIGATE_ZONE then return end
+    task.spawn(function()
+        while CONFIG.AUTO_NAVIGATE_ZONE do
+            if not isInRngInstance() then
+                enterRngInstance()
+                task.wait(5)
+            else
+                if not isSellingPets then
+                    local maxZone = getMaxUnlockedZone()
+                    if maxZone then
+                        local target = getDynamicFarmCenter(maxZone)
+                        if target then
+                            local _, hrp = getChar()
+                            if hrp then
+                                local dist = (hrp.Position - target).Magnitude
+                                if dist > 40 then
+                                    safeTeleport(CFrame.new(target + Vector3.new(0, 4, 0)), 1.5)
+                                end
+                            end
+                        end
+                    end
+                end
+                task.wait(CONFIG.LOOP_INTERVALS.ZONE_CHECK)
+            end
+        end
+    end)
+end
+
+local function farmLoop()
+    if not CONFIG.AUTO_FARM then return end
+
+    task.spawn(function()
+        local cachedFolder = nil
+        local lastAnchorSet = 0
+        local function getBreakablesFolder()
+            if cachedFolder and cachedFolder.Parent then
+                return cachedFolder
+            end
+            local things = workspace:FindFirstChild("__THINGS")
+            local b = things and things:FindFirstChild("Breakables")
+            if b then
+                cachedFolder = b
+                return b
+            end
+            local ab = workspace:FindFirstChild("ActiveBreakables")
+            if ab then
+                cachedFolder = ab
+                return ab
+            end
+            local b2 = workspace:FindFirstChild("Breakables")
+            if b2 then
+                cachedFolder = b2
+                return b2
+            end
+            return nil
+        end
+
+        while CONFIG.AUTO_FARM do
+            if not isInRngInstance() then
+                task.wait(2)
+            else
+                local _, hrp = getChar()
+                if not hrp then
+                    task.wait(0.5)
+                else
+                    local playerPos  = hrp.Position
+                    local breakableObjs = {}
+
+                    local folder = getBreakablesFolder()
+                    if folder then
+                        for _, obj in ipairs(folder:GetChildren()) do
+                            local pos
+                            if obj:IsA("Model") then
+                                local pp = obj.PrimaryPart or obj:FindFirstChildOfClass("BasePart")
+                                if pp then pos = pp.Position end
+                            elseif obj:IsA("BasePart") then
+                                pos = obj.Position
+                            end
+                            if pos then
+                                local d = (pos - playerPos).Magnitude
+                                if d <= CONFIG.FARM_RADIUS then
+                                    table.insert(breakableObjs, obj)
+                                end
+                            end
+                        end
+                    end
+
+                    if #breakableObjs > 0 then
+                        pcall(function()
+
+                            local now = tick()
+                            if now - lastAnchorSet >= 5 then
+                                lastAnchorSet = now
+                                Network.Fire("BR_SetAnchor", playerPos)
+                            end
+
+                            Network.Fire("Breakables_JoinPetBulk", breakableObjs)
+                        end)
+                    end
+
+                    task.wait(CONFIG.LOOP_INTERVALS.FARM)
+                end
+            end
+        end
+    end)
+end
+
+local function rollLoop()
+    if not CONFIG.AUTO_ROLL then return end
+
+    pcall(function()
+        Network.Fire("AutoRoll_Enable_V2")
+        if CONFIG.AUTO_HIDE_ROLL then
+            if RngEggCmds and RngEggCmds.SetHiddenRolls then
+                RngEggCmds.SetHiddenRolls(true)
+            end
+            Network.Fire("Rng_HiddenRoll_Enable_V2")
+        end
+    end)
+
+    task.spawn(function()
+        while CONFIG.AUTO_ROLL do
+            if not isInRngInstance() then
+                task.wait(2)
+            else
+                local ok, s, e, data = pcall(function()
+                    return Network.Invoke("Rng_Roll_V2", "First")
+                end)
+
+                if ok and s and data then
+                    local reward = data.Reward
+                    if reward and reward.Item and CONFIG.AUTO_CLEAR_HIDDEN then
+                        pcall(function() Network.Fire("Pets_ClearHidden", { reward.Item.uid }) end)
+                    end
+                else
+                    local msg = not ok and tostring(s) or tostring(e)
+                    local lo  = msg:lower()
+                    if not lo:find("already") and not lo:find("cooldown") then
+
+                    end
+                end
+
+                local w = CONFIG.COOLDOWN_DEFAULT
+                if RngEggCmds and RngEggsDir and RngEggsDir.First then
+                    pcall(function() w = RngEggCmds.ComputeCooldown(RngEggsDir.First) end)
+                end
+                task.wait(w)
+            end
+        end
+    end)
+end
+
+local function getMerchantPosition()
+    local things = workspace:FindFirstChild("__THINGS")
+    local instContainer = things and things:FindFirstChild("__INSTANCE_CONTAINER")
+    local active = instContainer and instContainer:FindFirstChild("Active")
+    local rngInst = active and active:FindFirstChild("RngInstance")
+    local interact = rngInst and rngInst:FindFirstChild("INTERACT")
+    local machines = interact and interact:FindFirstChild("Machines")
+    local merchant = machines and machines:FindFirstChild("RngEventPetMerchant")
+    if merchant then
+        local pad = merchant:FindFirstChild("Pad") or merchant:FindFirstChild("Arrow") or merchant:FindFirstChildWhichIsA("BasePart", true)
+        if pad then
+            return pad.Position
+        end
+    end
+    return Vector3.new(4406.35, 2562.10, -5379.42)
+end
+
+local function autoSell()
+
+    local saveModule = getSaveModule()
+    if not CONFIG.AUTO_SELL_PETS then
+
+        return
+    end
+    if not saveModule then
+
+        return
+    end
+    if not RngEggsDir then
+
+        return
+    end
+    if not PetItem then
+
+        return
+    end
+
+    local ok, save = pcall(function() return saveModule.Get() end)
+    if not ok or not save then
+
+        return
+    end
+    if not save.Inventory or not save.Inventory.Pet then
+
+        return
+    end
+
+    local function strength(petItem)
+        local m = 1
+        if petItem:IsShiny() then m = m * 1.5 end
+        if petItem:IsGolden() then m = m * 2 end
+        if petItem:IsRainbow() then m = m * 3 end
+        return m
+    end
+
+    local function count_keys(tbl)
+        local count = 0
+        for _ in pairs(tbl) do count = count + 1 end
+        return count
+    end
+
+    local sellableNames = {}
+    if RngEggsDir and RngEggsDir.First and RngEggsDir.First.DropTable and RngEggsDir.First.DropTable.entries then
+        pcall(function()
+            for _, entry in ipairs(RngEggsDir.First.DropTable.entries) do
+                local val = entry.Value
+                if val and not val:IsHuge() and not val:IsTitanic() then
+                    sellableNames[val:GetId()] = true
+                end
+            end
+        end)
+    end
+
+    local OBTAINABLE_FALLBACK = {
+        ["Sand Turtle"] = true, ["Sprout Stag"] = true, ["Blossom Fox"] = true,
+        ["Error Dragon"] = true, ["Honey Bee"] = true, ["Chameleon"] = true,
+        ["Tiedye Elephant"] = true, ["Bubble Bunny"] = true, ["Starry Eye Wolf"] = true,
+        ["Sapphire Dragon"] = true, ["Wisp Owl"] = true, ["Mystical Kitsune"] = true,
+        ["Surge Wolf"] = true, ["Hydra Cat"] = true, ["Pixel Hippomelon"] = true,
+        ["Vibrant Zebra"] = true, ["Holographic Shark"] = true
+    }
+
+    local function isSellable(petItem)
+        if petItem:IsHuge() or petItem:IsTitanic() then
+            return false
+        end
+        local id = petItem:GetId()
+        return (sellableNames[id] == true) or (OBTAINABLE_FALLBACK[id] == true)
+    end
+
+    local groups = {}
+    local totalPetsChecked = 0
+    local sellableCount = 0
+
+    local allPets = {}
+    local okAll, resAll = pcall(function() return PetItem:All() end)
+    if okAll and resAll then
+        for uid, petItem in pairs(resAll) do
+            allPets[uid] = petItem
+        end
+
     else
-        warn("Không tìm thấy RemoteEvent để tặng trái.")
+
     end
-    wait(0.5)
-end
 
--- 🔁 Vòng lặp tặng tất cả trái
-function giftAllFruitsToTarget()
-    if not moveToPlayer(targetPlayerName) then return end
-    wait(1)
-
-    local fruits = getAllFruits()
-    while #fruits > 0 do
-        for _, fruit in pairs(fruits) do
-            giftFruit(fruit, targetPlayerName)
-            wait(0.4)
+    local saveCount = 0
+    for uid, _ in pairs(save.Inventory.Pet) do
+        saveCount = saveCount + 1
+        if not allPets[uid] then
+            local petItem = PetItem:Get(uid)
+            if petItem then
+                allPets[uid] = petItem
+            end
         end
-        fruits = getAllFruits()
     end
-    print("🎉 Đã gửi hết tất cả trái!")
+
+    for uid, petItem in pairs(allPets) do
+        totalPetsChecked = totalPetsChecked + 1
+
+        local petId = "unknown"
+        pcall(function() petId = petItem:GetId() end)
+        local petAmt = 1
+        pcall(function() petAmt = petItem:GetAmount() or 1 end)
+
+        local can = isSellable(petItem)
+
+        if can then
+            sellableCount = sellableCount + 1
+            local pid = petItem:GetId()
+            if not groups[pid] then groups[pid] = {} end
+            table.insert(groups[pid], {
+                uid = uid,
+                item = petItem,
+                strength = strength(petItem),
+                amount = petAmt
+            })
+        end
+    end
+
+    local toSell = {}
+    local totalToSell = 0
+
+    for pid, group in pairs(groups) do
+
+        table.sort(group, function(a, b) return a.strength > b.strength end)
+
+        local kept = 0
+        for _, info in ipairs(group) do
+            local amt = info.amount
+            if kept < CONFIG.MAX_PER_TYPE then
+                local space = CONFIG.MAX_PER_TYPE - kept
+                if amt <= space then
+
+                    kept = kept + amt
+                else
+
+                    local keepAmt = space
+                    local sellAmt = amt - keepAmt
+                    toSell[info.uid] = sellAmt
+                    totalToSell = totalToSell + sellAmt
+                    kept = CONFIG.MAX_PER_TYPE
+                end
+            else
+
+                toSell[info.uid] = amt
+                totalToSell = totalToSell + amt
+            end
+        end
+    end
+
+    if totalToSell > 0 then
+        if not isInRngInstance() then
+
+            return
+        end
+
+        local _, hrp = getChar()
+        if not hrp then
+
+            return
+        end
+
+        isSellingPets = true
+
+        local originalCFrame = hrp.CFrame
+        local merchantPos = getMerchantPosition()
+        safeTeleport(CFrame.new(merchantPos + Vector3.new(0, 3, 0)), 1.5)
+
+        local sellOk, sellRes = pcall(function() return Network.Invoke("RngEventPetMerchant_Activate_V2", toSell) end)
+        if sellOk then
+
+        else
+
+        end
+
+        safeTeleport(originalCFrame, 1.0)
+
+        isSellingPets = false
+        pcall(collectgarbage, "collect")
+    else
+        pcall(collectgarbage, "collect")
+    end
 end
 
--- 🚀 Bắt đầu
-giftAllFruitsToTarget()
+local function autoMerchant()
+    if not CONFIG.AUTO_BUY_MERCHANT then return end
+    for slot = 1, 6 do
+        task.spawn(function()
+            pcall(function() Network.Invoke("Merchant_RequestPurchase", "LuckyDiceMerchantV2", slot) end)
+        end)
+        task.wait(0.1)
+    end
+end
+
+local function autoCraft()
+    if not CONFIG.AUTO_CRAFT_DICE or not LuckyDiceCmds then return end
+    for _, name in ipairs(CONFIG.CRAFT_PRIORITIES) do
+        local amt = 0
+        pcall(function() amt = LuckyDiceCmds.ComputeMaxCraftable(name) or 0 end)
+        if amt > 0 then
+            pcall(function() Network.Invoke("LuckyDice_Craft_V2", name, amt) end)
+        end
+        task.wait(0.1)
+    end
+end
+
+local function getDiceCount(name)
+    local saveModule = getSaveModule()
+    if not saveModule then return 0 end
+    local ok, save = pcall(function() return saveModule.Get() end)
+    if not ok or not save or not save.Inventory or not save.Inventory.Misc then return 0 end
+
+    local total = 0
+    for _, item in pairs(save.Inventory.Misc) do
+        if item.id == name or item._id == name then
+            total = total + (item._am or item.amount or 1)
+        end
+    end
+    return total
+end
+
+local function getRollCombo(save)
+
+    local ok, val = pcall(function()
+        local txt = LocalPlayer.PlayerGui.Main.Right.Combos.Combo.Combo.Text
+        local numStr = txt:gsub("%D", "")
+        return tonumber(numStr)
+    end)
+    if ok and val then return val end
+
+    local ok2, val2 = pcall(function()
+        local txt = LocalPlayer.PlayerGui.ComboFallbackUI.Frame.Combo.Text
+        local numStr = txt:gsub("%D", "")
+        return tonumber(numStr)
+    end)
+    if ok2 and val2 then return val2 end
+
+    if save then
+        return save.RollCombo or 0
+    end
+
+    local saveModule = getSaveModule()
+    if saveModule then
+        local ok3, s = pcall(function() return saveModule.Get() end)
+        if ok3 and s then
+            return s.RollCombo or 0
+        end
+    end
+
+    return 0
+end
+
+local lastUsedComboThreshold = 0
+
+local function autoUseMegaDice()
+    if not CONFIG.AUTO_USE_DICE then return end
+
+    local saveModule = getSaveModule()
+    local save = nil
+    if saveModule then
+        pcall(function() save = saveModule.Get() end)
+    end
+
+    local currentCombo = getRollCombo(save)
+    local name = "Mega Lucky Dice II V2"
+    local count = getDiceCount(name)
+    if count <= 0 then return end
+
+    if currentCombo < lastUsedComboThreshold then
+        lastUsedComboThreshold = math.floor(currentCombo / 5000) * 5000
+    end
+
+    if currentCombo >= 100000 then
+
+        local useOk, res = pcall(function() return Network.Invoke("LuckyDice_ConsumeMega_V2", name, count) end)
+        if useOk then
+
+        else
+
+        end
+    elseif currentCombo >= 5000 then
+
+        local currentThreshold = math.floor(currentCombo / 5000) * 5000
+        if currentThreshold > lastUsedComboThreshold then
+
+            local useOk, res = pcall(function() return Network.Invoke("LuckyDice_ConsumeMega_V2", name, 1) end)
+            if useOk then
+
+                lastUsedComboThreshold = currentThreshold
+            else
+
+            end
+        end
+    end
+end
+
+local function autoUseLuckyDiceII()
+    if not CONFIG.AUTO_USE_DICE then return end
+    local name = "Lucky Dice II V2"
+    local count = getDiceCount(name)
+    if count > 0 then
+
+        local ok, res = pcall(function() return Network.Invoke("LuckyDice_Consume_V2", name, 1) end)
+        if ok then
+
+        else
+
+        end
+    else
+
+    end
+end
+
+local function autoUpgrade()
+    if not CONFIG.AUTO_UPGRADE then return end
+    for _, name in ipairs(CONFIG.UPGRADES_TO_BUY) do
+        task.spawn(function()
+            pcall(function() Network.Invoke("Rng_PurchaseUpgrade_V2", "First", name) end)
+        end)
+        task.wait(0.1)
+    end
+end
+
+local function autoEquip()
+    if not CONFIG.AUTO_EQUIP_PETS then return end
+    pcall(function() Network.Fire("LD_BestFit") end)
+end
+
+local function startNavcUI()
+    local TweenService = game:GetService("TweenService")
+    local CoreGui = game:GetService("CoreGui")
+
+    local existingUI = CoreGui:FindFirstChild("NavcHudGui") or LocalPlayer.PlayerGui:FindFirstChild("NavcHudGui")
+    if existingUI then
+        existingUI:Destroy()
+    end
+
+    local ScreenGui = Instance.new("ScreenGui")
+    ScreenGui.Name = "NavcHudGui"
+    ScreenGui.DisplayOrder = 9999999 
+    ScreenGui.ResetOnSpawn = false
+
+    local success, _ = pcall(function() ScreenGui.Parent = CoreGui end)
+    if not success then
+        ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+    end
+
+    local MainFrame = Instance.new("Frame")
+    MainFrame.Name = "MainFrame"
+    MainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+    MainFrame.Size = UDim2.new(0, 420, 0, 200)
+    MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0) 
+    MainFrame.BackgroundColor3 = Color3.fromRGB(10, 11, 13)
+    MainFrame.BackgroundTransparency = 0.05
+    MainFrame.BorderSizePixel = 0
+    MainFrame.Parent = ScreenGui
+
+    local Corner = Instance.new("UICorner")
+    Corner.CornerRadius = UDim.new(0, 8)
+    Corner.Parent = MainFrame
+
+    local Stroke = Instance.new("UIStroke")
+    Stroke.Color = Color3.fromRGB(30, 32, 45)
+    Stroke.Thickness = 1.5
+    Stroke.Parent = MainFrame
+
+    local HeaderFrame = Instance.new("Frame")
+    HeaderFrame.Name = "HeaderFrame"
+    HeaderFrame.Size = UDim2.new(1, 0, 0, 50)
+    HeaderFrame.Position = UDim2.new(0, 0, 0, 0)
+    HeaderFrame.BackgroundTransparency = 1
+    HeaderFrame.Parent = MainFrame
+
+    local TitleLabel = Instance.new("TextLabel")
+    TitleLabel.Name = "TitleLabel"
+    TitleLabel.Size = UDim2.new(1, -40, 1, 0)
+    TitleLabel.Position = UDim2.new(0, 20, 0, 0)
+    TitleLabel.BackgroundTransparency = 1
+    TitleLabel.Text = "NAVC - RNG EVENT PAST 2"
+    TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    TitleLabel.Font = Enum.Font.GothamBold
+    TitleLabel.TextSize = 15
+    TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    TitleLabel.Parent = HeaderFrame
+
+    local Separator = Instance.new("Frame")
+    Separator.Name = "Separator"
+    Separator.Size = UDim2.new(1, 0, 0, 1)
+    Separator.Position = UDim2.new(0, 0, 1, -1)
+    Separator.BackgroundColor3 = Color3.fromRGB(30, 32, 45)
+    Separator.BorderSizePixel = 0
+    Separator.Parent = HeaderFrame
+
+    local ContentFrame = Instance.new("Frame")
+    ContentFrame.Name = "ContentFrame"
+    ContentFrame.Size = UDim2.new(1, 0, 1, -50)
+    ContentFrame.Position = UDim2.new(0, 0, 0, 50)
+    ContentFrame.BackgroundTransparency = 1
+    ContentFrame.Parent = MainFrame
+
+    local function createStatRow(name, labelText, yIndex)
+        local RowFrame = Instance.new("Frame")
+        RowFrame.Name = name .. "Row"
+        RowFrame.Size = UDim2.new(1, 0, 0, 48)
+        RowFrame.Position = UDim2.new(0, 0, 0, (yIndex - 1) * 48)
+        RowFrame.BackgroundTransparency = 1
+        RowFrame.Parent = ContentFrame
+
+        local Label = Instance.new("TextLabel")
+        Label.Name = "Label"
+        Label.Size = UDim2.new(0.3, 0, 1, 0)
+        Label.Position = UDim2.new(0, 20, 0, 0)
+        Label.BackgroundTransparency = 1
+        Label.Text = labelText
+        Label.TextColor3 = Color3.fromRGB(150, 155, 170)
+        Label.Font = Enum.Font.GothamSemibold
+        Label.TextSize = 11
+        Label.TextXAlignment = Enum.TextXAlignment.Left
+        Label.Parent = RowFrame
+
+        local Value = Instance.new("TextLabel")
+        Value.Name = "Value"
+        Value.Size = UDim2.new(0.7, -40, 1, 0)
+        Value.Position = UDim2.new(0.3, 20, 0, 0)
+        Value.BackgroundTransparency = 1
+        Value.Text = "--"
+        Value.TextColor3 = Color3.fromRGB(0, 170, 255) 
+        Value.Font = Enum.Font.GothamBold
+        Value.TextSize = 16
+        Value.TextTruncate = Enum.TextTruncate.AtEnd
+        Value.TextXAlignment = Enum.TextXAlignment.Right
+        Value.Parent = RowFrame
+
+        if yIndex < 3 then
+            local RowSep = Instance.new("Frame")
+            RowSep.Name = "RowSep"
+            RowSep.Size = UDim2.new(1, -40, 0, 1)
+            RowSep.Position = UDim2.new(0, 20, 1, -1)
+            RowSep.BackgroundColor3 = Color3.fromRGB(25, 27, 37)
+            RowSep.BorderSizePixel = 0
+            RowSep.Parent = RowFrame
+        end
+
+        return Value
+    end
+
+    local PlayerVal = createStatRow("Player", "PLAYER NAME", 1)
+    local ComboVal  = createStatRow("Combo", "ROLL COMBO", 2)
+    local UptimeVal = createStatRow("Uptime", "ACTIVE TIME", 3)
+
+    local function formatNumber(val)
+        local formatted = tostring(val)
+        local k
+        while true do  
+            formatted, k = string.gsub(formatted, "^(-?%d+)(%d%d%d)", '%1,%2')
+            if k == 0 then break end
+        end
+        return formatted
+    end
+
+    task.spawn(function()
+
+        PlayerVal.Text = LocalPlayer.DisplayName .. " (@" .. LocalPlayer.Name .. ")"
+
+        local mySaveData = nil
+        task.spawn(function()
+            local saveModule = nil
+            pcall(function()
+                local Library = game.ReplicatedStorage:FindFirstChild("Library")
+                local Client = Library and Library:FindFirstChild("Client")
+                local saveObj = Client and Client:FindFirstChild("Save")
+                if saveObj then
+                    saveModule = require(saveObj)
+                end
+            end)
+
+            if saveModule then
+                while ScreenGui and ScreenGui.Parent do
+                    pcall(function()
+                        mySaveData = saveModule.Get()
+                    end)
+                    task.wait(2)
+                end
+            end
+        end)
+
+        local function findComboTextFromUI()
+            local val = nil
+
+            pcall(function()
+                local combosFrame = LocalPlayer.PlayerGui.Main.Right.Combos
+                local comboText = combosFrame.Combo.Combo
+                if comboText and comboText:IsA("TextLabel") then
+                    val = tonumber(comboText.Text:gsub("%D", ""))
+                end
+            end)
+            if val then return val end
+
+            pcall(function()
+                local lbl = LocalPlayer.PlayerGui.ComboFallbackUI.Frame.Combo
+                if lbl and lbl:IsA("TextLabel") then
+                    val = tonumber(lbl.Text:gsub("%D", ""))
+                end
+            end)
+            return val or 0
+        end
+
+        local function formatUptime(seconds)
+            local hrs = math.floor(seconds / 3600)
+            local mins = math.floor((seconds % 3600) / 60)
+            local secs = seconds % 60
+            return string.format("%02dh %02dm %02ds", hrs, mins, secs)
+        end
+
+        local startTime = os.time()
+
+        while ScreenGui and ScreenGui.Parent do
+            pcall(function()
+                local location = isInRngInstance() and "INSTANCE" or "LOBBY"
+                local statusText = "ACTIVE"
+                if not Library then
+                    statusText = "ERR: Library Timeout"
+                elseif not Network then
+                    statusText = "ERR: Network Nil"
+                elseif not RngEggCmds then
+                    statusText = "ERR: EggCmds Nil"
+                elseif not PetItem then
+                    statusText = "ERR: PetItem Nil"
+                end
+                TitleLabel.Text = "NAVC - RNG [" .. statusText .. " | " .. location .. "]"
+            end)
+
+            local combo = findComboTextFromUI()
+            if combo == 0 and mySaveData then
+                combo = mySaveData.RollCombo or 0
+            end
+            ComboVal.Text = formatNumber(combo)
+
+            local uptime = os.time() - startTime
+            UptimeVal.Text = formatUptime(uptime)
+
+            task.wait(CONFIG.OPTIMIZE_TEXTURES and 3 or 1)
+        end
+    end)
+end
+
+-- 1. Khởi chạy giao diện HUD ngay lập tức để người dùng có phản hồi trực quan trên màn hình
+task.spawn(startNavcUI)
+
+-- 2. Tiến hành tải các tài nguyên game quan trọng trong nền
+task.spawn(function()
+    print("[RNG Script] Đang tải các tài nguyên game quan trọng (Waiting for Library)...")
+    
+    Library = ReplicatedStorage:WaitForChild("Library", 45)
+    if not Library then 
+        warn("[RNG Script] Không thể tải thư viện game chính (Library Timeout)!")
+        return 
+    end
+
+    Client    = Library:WaitForChild("Client", 30)
+    Directory = Library:WaitForChild("Directory", 30)
+    Types     = Library:WaitForChild("Types", 30)
+    Modules   = Library:WaitForChild("Modules", 30)
+
+    Network        = Client and safeRequire(Client:WaitForChild("Network", 30))
+    RngEggsTypes   = Types     and safeRequire(Types:WaitForChild("RngEggs", 30))
+    RngEggsDir     = Directory and safeRequire(Directory:WaitForChild("RngEggs", 30))
+    RngBalancing   = Library   and safeRequire(Library:WaitForChild("Balancing", 30) and Library.Balancing:WaitForChild("Rng", 30))
+    RngEggCmds     = Client    and safeRequire(Client:WaitForChild("RngEggCmds", 30))
+    PetItem        = Library   and safeRequire(Library:WaitForChild("Items", 30):WaitForChild("PetItem", 30))
+    LuckyDiceCmds  = Client    and safeRequire(Client:WaitForChild("LuckyDiceCmds", 30))
+
+    print("[RNG Script] --- THÔNG TIN TẢI MODULE ---")
+    print("[RNG Script] Network:", tostring(Network))
+    print("[RNG Script] RngEggCmds:", tostring(RngEggCmds))
+    print("[RNG Script] PetItem:", tostring(PetItem))
+    print("[RNG Script] LuckyDiceCmds:", tostring(LuckyDiceCmds))
+    print("[RNG Script] RngEggsDir:", tostring(RngEggsDir))
+    print("[RNG Script] SaveModule:", tostring(getSaveModule()))
+    print("[RNG Script] -----------------------------")
+
+    if not Network then
+        warn("[RNG Script] Ngừng khởi chạy các luồng do lỗi thiếu Network!")
+        return
+    end
+
+    print("[RNG Script] Khởi tạo thành công! Bắt đầu chạy các luồng tự động farm.")
+
+    -- 3. Khởi chạy so le (Staggered Startup) các luồng tự động sau khi tải xong tài nguyên
+    task.wait(1.5)
+    task.spawn(rollLoop)
+    
+    task.wait(1.5)
+    task.spawn(farmLoop)
+
+    task.wait(1.5)
+    task.spawn(navigationLoop)
+    
+    task.wait(1.5)
+    task.spawn(function()
+        while true do
+            autoEquip()
+            task.wait(10)
+        end
+    end)
+
+    task.wait(2.0)
+    task.spawn(function()
+        local t = { merchant=0, craft=0, upgrade=0, sell=0, useMega=0, useLucky2=0 }
+        while true do
+            local now = tick()
+            if now - t.merchant >= CONFIG.LOOP_INTERVALS.MERCHANT then t.merchant=now; task.spawn(autoMerchant) end
+            if now - t.upgrade  >= CONFIG.LOOP_INTERVALS.UPGRADE  then t.upgrade=now;  task.spawn(autoUpgrade)  end
+            if now - t.craft    >= CONFIG.LOOP_INTERVALS.CRAFT    then t.craft=now;    task.spawn(autoCraft)    end
+            if now - t.sell     >= CONFIG.LOOP_INTERVALS.SELL     then t.sell=now;     task.spawn(autoSell)     end
+            if now - t.useMega  >= CONFIG.LOOP_INTERVALS.USE_MEGA_DICE then t.useMega=now;  task.spawn(autoUseMegaDice)  end
+            if now - t.useLucky2 >= CONFIG.LOOP_INTERVALS.USE_LUCKY_DICE_II then t.useLucky2=now; task.spawn(autoUseLuckyDiceII)  end
+            task.wait(1)
+        end
+    end)
+end)
+
+task.spawn(function()
+    while true do
+        task.wait(15)
+        pcall(collectgarbage, "collect")
+    end
+end)
+
+
+
+-- Khởi tạo hoàn tất.
